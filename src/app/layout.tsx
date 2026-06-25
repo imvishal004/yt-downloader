@@ -1,16 +1,33 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+
 import "./globals.css";
 
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+
 export const metadata: Metadata = {
-  title: "YT Downloader - Download YouTube Videos",
-  description: "Download YouTube videos in MP4 or extract audio as MP3. Fast, simple, no signup required.",
+  title: "YT Down - Download YouTube Videos & MP3",
+  description:
+    "Download YouTube videos in MP4 and audio in MP3. Fast, responsive and easy to use.",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   return (
-    <html lang="en">
-      <body className="bg-gray-950 text-white antialiased">{children}</body>
+    <html lang="en" suppressHydrationWarning>
+      <body className="antialiased">
+        <Header />
+
+        <main className="pt-4">
+          {children}
+        </main>
+
+        <Footer />
+      </body>
     </html>
   );
 }

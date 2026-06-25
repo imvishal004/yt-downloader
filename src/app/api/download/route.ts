@@ -4,6 +4,7 @@ import { promisify } from "util";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import { Readable } from "stream";
 
 const execFileAsync = promisify(execFile);
 
@@ -42,6 +43,26 @@ function cleanupOldTempFiles() {
       } catch {}
     }
   } catch {}
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+
+  const body = {
+    url: searchParams.get("url"),
+    type: searchParams.get("type"),
+    quality: searchParams.get("quality"),
+  };
+
+  const postRequest = new Request(request.url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  return POST(postRequest as NextRequest);
 }
 
 export async function POST(request: NextRequest) {
@@ -192,8 +213,8 @@ export async function POST(request: NextRequest) {
     const expectedExt = isAudio
       ? "mp3"
       : Number(quality || "720") > 1080
-        ? "mkv"
-        : "mp4";
+      ? "mkv"
+      : "mp4";
 
     let filePath = path.join(tmpDir, `${safeTitle}.${expectedExt}`);
 
@@ -232,10 +253,17 @@ export async function POST(request: NextRequest) {
 
     const stat = fs.statSync(filePath);
 
-    const fileBuffer = fs.readFileSync(filePath);
+    const nodeStream = fs.createReadStream(filePath);
 
-    fs.unlinkSync(filePath);
+    nodeStream.on("close", () => {
+      try {
+        fs.unlinkSync(filePath);
+      } catch {}
+    });
+
     downloadedFilePath = null;
+
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream;
 
     const actualExt = path.extname(filePath).slice(1) || expectedExt;
     const finalFilename = `${safeTitle}.${actualExt}`;
@@ -245,12 +273,12 @@ export async function POST(request: NextRequest) {
         ? "audio/mpeg"
         : "application/octet-stream"
       : actualExt === "mp4"
-        ? "video/mp4"
-        : actualExt === "mkv"
-          ? "video/x-matroska"
-          : "application/octet-stream";
+      ? "video/mp4"
+      : actualExt === "mkv"
+      ? "video/x-matroska"
+      : "application/octet-stream";
 
-    return new NextResponse(fileBuffer, {
+    return new NextResponse(webStream, {
       headers: {
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename*=UTF-8''${encodeRFC5987(
@@ -288,7 +316,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        error: "Failed to download. Please try again or try a different quality.",
+        error:
+          "Failed to download. Please try again or try a different quality.",
       },
       { status: 500 }
     );
@@ -302,6 +331,6 @@ function encodeRFC5987(str: string): string {
   );
 }
 
-function encodeLegacy(str: string): string {
+function encodeLegacy(str: string) {
   return str.replace(/[^\x20-\x7E]/g, "_").replace(/"/g, "'");
 }
