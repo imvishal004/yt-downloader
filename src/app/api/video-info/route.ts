@@ -11,21 +11,17 @@ export async function POST(request: NextRequest) {
     const { url } = await request.json();
 
     if (!url) {
-      return NextResponse.json(
-        { error: "URL is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
 
     const cleanUrl = url.trim();
 
-    const ytRegex =
-      /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/i;
+    const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/i;
 
     if (!ytRegex.test(cleanUrl)) {
       return NextResponse.json(
         { error: "Invalid YouTube URL" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -37,12 +33,16 @@ export async function POST(request: NextRequest) {
         "--no-playlist",
         "--socket-timeout",
         "30",
+
+        "--user-agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+
         cleanUrl,
       ],
       {
         timeout: 30000,
         env: process.env,
-      }
+      },
     );
 
     const videoInfo = JSON.parse(stdout);
@@ -51,20 +51,16 @@ export async function POST(request: NextRequest) {
       ...new Set<number>(
         (videoInfo.formats || [])
           .filter(
-            (f: any) =>
-              typeof f.height === "number" &&
-              f.vcodec !== "none"
+            (f: any) => typeof f.height === "number" && f.vcodec !== "none",
           )
-          .map((f: any) => f.height as number)
+          .map((f: any) => Number(f.height)),
       ),
     ].sort((a, b) => b - a);
 
     return NextResponse.json({
       id: videoInfo.id,
       title: videoInfo.title,
-      thumbnail:
-        videoInfo.thumbnail ||
-        videoInfo.thumbnails?.[videoInfo.thumbnails.length - 1]?.url,
+      thumbnail: videoInfo.thumbnail || videoInfo.thumbnails?.at(-1)?.url,
       duration: videoInfo.duration,
       durationString: videoInfo.duration_string,
       views: videoInfo.view_count,
@@ -73,28 +69,45 @@ export async function POST(request: NextRequest) {
       description: videoInfo.description?.slice(0, 200) || "",
       qualities,
     });
-  } catch (error: unknown) {
+  } catch (error: any) {
     console.error("Error fetching video info:", error);
 
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
+    const stderr = error?.stderr || "";
 
-    if (message.includes("timed out")) {
+    if (stderr.includes("DRM protected")) {
       return NextResponse.json(
         {
           error:
-            "Request timed out. Please check the URL and try again.",
+            "This YouTube video is DRM protected and cannot be downloaded.",
         },
-        { status: 408 }
+        { status: 400 },
+      );
+    }
+
+    if (stderr.includes("Sign in to confirm")) {
+      return NextResponse.json(
+        {
+          error:
+            "YouTube is temporarily blocking this request. Please try another video.",
+        },
+        { status: 400 },
+      );
+    }
+
+    if (error?.message?.includes("timed out")) {
+      return NextResponse.json(
+        {
+          error: "Request timed out. Please try again.",
+        },
+        { status: 408 },
       );
     }
 
     return NextResponse.json(
       {
-        error:
-          "Could not fetch video information. Please check the URL.",
+        error: "Could not fetch video information.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 }

@@ -77,25 +77,14 @@ export default function Home() {
   }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
+    const value = e.target.value.trim();
     setUrl(value);
     setError(null);
 
-    // Auto-fetch when URL looks complete (has a video ID)
     const ytRegex =
       /^(https?:\/\/)?(www\.)?(youtube\.com\/(watch\?v=|embed\/|v\/)|youtu\.be\/)[a-zA-Z0-9_-]+/;
     if (ytRegex.test(value)) {
       fetchVideoInfo(value);
-    }
-  };
-
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    const pastedText = e.clipboardData.getData("text");
-    setUrl(pastedText);
-    setError(null);
-    const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/;
-    if (ytRegex.test(pastedText.trim())) {
-      await fetchVideoInfo(pastedText.trim());
     }
   };
 
@@ -276,7 +265,6 @@ export default function Home() {
                       type="url"
                       value={url}
                       onChange={handleInputChange}
-                      onPaste={handlePaste}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && !loading && url.trim()) {
                           fetchVideoInfo(url);
