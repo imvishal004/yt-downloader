@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const YT_DLP_PATH = process.env.YT_DLP_PATH || "yt-dlp";
+const COOKIES_PATH =  process.env.YT_DLP_COOKIES || "/root/yt-downloader/cookies.txt";
 
 function sanitizeFilename(name: string): string {
   return (
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
     try {
       const infoResult = await execFileAsync(
         YT_DLP_PATH,
-        ["--dump-json", "--no-warnings", "--no-playlist", cleanUrl],
+        ["--cookies", COOKIES_PATH, "--dump-json", "--no-warnings", "--no-playlist", "--socket-timeout", "30", "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36", cleanUrl],
         {
           timeout: 30000,
           env: process.env,
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
     const safeTitle = sanitizeFilename(videoInfo.title || "video");
     const outTemplate = path.join(tmpDir, `${safeTitle}.%(ext)s`);
 
-    const args: string[] = ["--no-warnings", "--no-playlist"];
+    const args: string[] = ["--no-warnings", "--no-playlist", "--cookies", COOKIES_PATH];
 
     if (isAudio) {
       args.push(
