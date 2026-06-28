@@ -5,8 +5,8 @@ import { promisify } from "util";
 const execFileAsync = promisify(execFile);
 
 const YT_DLP_PATH = process.env.YT_DLP_PATH || "yt-dlp";
-const COOKIES_PATH =
-  process.env.YT_DLP_COOKIES || "/root/yt-downloader/cookies.txt";
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,21 +18,20 @@ export async function POST(request: NextRequest) {
 
     const cleanUrl = url.trim();
 
-    const ytRegex =
-      /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/i;
+    const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/i;
 
     if (!ytRegex.test(cleanUrl)) {
       return NextResponse.json(
         { error: "Invalid YouTube URL" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const { stdout } = await execFileAsync(
       YT_DLP_PATH,
       [
-        "--cookies",
-        COOKIES_PATH,
+        "--js-runtimes",
+        "node",
 
         "--dump-json",
         "--no-warnings",
@@ -41,14 +40,14 @@ export async function POST(request: NextRequest) {
         "30",
 
         "--user-agent",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+        USER_AGENT,
 
         cleanUrl,
       ],
       {
         timeout: 30000,
         env: process.env,
-      }
+      },
     );
 
     const videoInfo = JSON.parse(stdout);
@@ -57,20 +56,16 @@ export async function POST(request: NextRequest) {
       ...new Set<number>(
         (videoInfo.formats || [])
           .filter(
-            (f: any) =>
-              typeof f.height === "number" &&
-              f.vcodec !== "none"
+            (f: any) => typeof f.height === "number" && f.vcodec !== "none",
           )
-          .map((f: any) => Number(f.height))
+          .map((f: any) => Number(f.height)),
       ),
     ].sort((a, b) => b - a);
 
     return NextResponse.json({
       id: videoInfo.id,
       title: videoInfo.title,
-      thumbnail:
-        videoInfo.thumbnail ||
-        videoInfo.thumbnails?.at(-1)?.url,
+      thumbnail: videoInfo.thumbnail || videoInfo.thumbnails?.at(-1)?.url,
       duration: videoInfo.duration,
       durationString: videoInfo.duration_string,
       views: videoInfo.view_count,
@@ -90,7 +85,7 @@ export async function POST(request: NextRequest) {
           error:
             "This YouTube video is DRM protected and cannot be downloaded.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -100,7 +95,7 @@ export async function POST(request: NextRequest) {
           error:
             "YouTube is temporarily blocking this request. Please try another video.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -109,7 +104,7 @@ export async function POST(request: NextRequest) {
         {
           error: "Request timed out. Please try again.",
         },
-        { status: 408 }
+        { status: 408 },
       );
     }
 
@@ -117,7 +112,7 @@ export async function POST(request: NextRequest) {
       {
         error: "Could not fetch video information.",
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 }

@@ -12,7 +12,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const YT_DLP_PATH = process.env.YT_DLP_PATH || "yt-dlp";
-const COOKIES_PATH =  process.env.YT_DLP_COOKIES || "/root/yt-downloader/cookies.txt";
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36";
 
 function sanitizeFilename(name: string): string {
   return (
@@ -75,21 +76,17 @@ export async function POST(request: NextRequest) {
     const { url, type, quality } = await request.json();
 
     if (!url || typeof url !== "string") {
-      return NextResponse.json(
-        { error: "URL is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "URL is required" }, { status: 400 });
     }
 
     const cleanUrl = url.trim();
 
-    const ytRegex =
-      /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/i;
+    const ytRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/i;
 
     if (!ytRegex.test(cleanUrl)) {
       return NextResponse.json(
         { error: "Invalid YouTube URL" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -101,11 +98,22 @@ export async function POST(request: NextRequest) {
     try {
       const infoResult = await execFileAsync(
         YT_DLP_PATH,
-        ["--cookies", COOKIES_PATH, "--dump-json", "--no-warnings", "--no-playlist", "--socket-timeout", "30", "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36", cleanUrl],
+        [
+          "--js-runtimes",
+          "node",
+          "--dump-json",
+          "--no-warnings",
+          "--no-playlist",
+          "--socket-timeout",
+          "30",
+          "--user-agent",
+          USER_AGENT,
+          cleanUrl,
+        ],
         {
           timeout: 30000,
           env: process.env,
-        }
+        },
       );
 
       videoInfo = JSON.parse(infoResult.stdout);
@@ -114,17 +122,16 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json(
         {
-          error:
-            "Could not retrieve video information. Please check the URL.",
+          error: "Could not retrieve video information. Please check the URL.",
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     const safeTitle = sanitizeFilename(videoInfo.title || "video");
     const outTemplate = path.join(tmpDir, `${safeTitle}.%(ext)s`);
 
-    const args: string[] = ["--no-warnings", "--no-playlist", "--cookies", COOKIES_PATH];
+    const args: string[] = ["--no-warnings", "--no-playlist"];
 
     if (isAudio) {
       args.push(
@@ -133,7 +140,7 @@ export async function POST(request: NextRequest) {
         "mp3",
         "--audio-quality",
         "0",
-        "--prefer-ffmpeg"
+        "--prefer-ffmpeg",
       );
     } else {
       const selectedQuality = quality || "720";
@@ -143,15 +150,14 @@ export async function POST(request: NextRequest) {
         `bestvideo[height<=${selectedQuality}]+bestaudio/` +
         `best[height<=${selectedQuality}]`;
 
-      const outputFormat =
-        Number(selectedQuality) > 1080 ? "mkv" : "mp4";
+      const outputFormat = Number(selectedQuality) > 1080 ? "mkv" : "mp4";
 
       args.push(
         "-f",
         format,
         "--merge-output-format",
         outputFormat,
-        "--embed-thumbnail"
+        "--embed-thumbnail",
       );
     }
 
@@ -161,7 +167,7 @@ export async function POST(request: NextRequest) {
       "--extractor-args",
       "youtube:player_client=android,web",
       "--user-agent",
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+      USER_AGENT,
       "--geo-bypass",
       "--no-overwrites",
       "--socket-timeout",
@@ -172,13 +178,13 @@ export async function POST(request: NextRequest) {
       "10",
       "--fragment-retries",
       "10",
-      cleanUrl
+      cleanUrl,
     );
 
     console.log(
       `[download] Starting ${
         isAudio ? "audio" : "video"
-      } (${quality || "best"}) download: ${safeTitle}`
+      } (${quality || "best"}) download: ${safeTitle}`,
     );
 
     await new Promise<void>((resolve, reject) => {
@@ -200,13 +206,13 @@ export async function POST(request: NextRequest) {
         } else {
           console.error(
             `[download] yt-dlp exited with code ${code}:`,
-            stderrData
+            stderrData,
           );
 
           reject(
             new Error(
-              `yt-dlp exited with code ${code}: ${stderrData.slice(-200)}`
-            )
+              `yt-dlp exited with code ${code}: ${stderrData.slice(-200)}`,
+            ),
           );
         }
       });
@@ -219,8 +225,8 @@ export async function POST(request: NextRequest) {
     const expectedExt = isAudio
       ? "mp3"
       : Number(quality || "720") > 1080
-      ? "mkv"
-      : "mp4";
+        ? "mkv"
+        : "mp4";
 
     let filePath = path.join(tmpDir, `${safeTitle}.${expectedExt}`);
 
@@ -279,16 +285,16 @@ export async function POST(request: NextRequest) {
         ? "audio/mpeg"
         : "application/octet-stream"
       : actualExt === "mp4"
-      ? "video/mp4"
-      : actualExt === "mkv"
-      ? "video/x-matroska"
-      : "application/octet-stream";
+        ? "video/mp4"
+        : actualExt === "mkv"
+          ? "video/x-matroska"
+          : "application/octet-stream";
 
     return new NextResponse(webStream, {
       headers: {
         "Content-Type": contentType,
         "Content-Disposition": `attachment; filename*=UTF-8''${encodeRFC5987(
-          finalFilename
+          finalFilename,
         )}; filename="${encodeLegacy(finalFilename)}"`,
         "Content-Length": stat.size.toString(),
         "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -304,19 +310,15 @@ export async function POST(request: NextRequest) {
       } catch {}
     }
 
-    const message =
-      error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? error.message : "Unknown error";
 
-    if (
-      message.includes("timed out") ||
-      message.includes("ETIMEDOUT")
-    ) {
+    if (message.includes("timed out") || message.includes("ETIMEDOUT")) {
       return NextResponse.json(
         {
           error:
             "Download timed out. The video may be too large — try a lower quality.",
         },
-        { status: 408 }
+        { status: 408 },
       );
     }
 
@@ -325,7 +327,7 @@ export async function POST(request: NextRequest) {
         error:
           "Failed to download. Please try again or try a different quality.",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -333,7 +335,7 @@ export async function POST(request: NextRequest) {
 function encodeRFC5987(str: string): string {
   return encodeURIComponent(str).replace(
     /[!'()*]/g,
-    (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase()
+    (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase(),
   );
 }
 
